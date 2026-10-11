@@ -1,0 +1,10 @@
+# Project settings for unity-ai-kit. COMMITTED to git: never put passwords or keystore paths here.
+# Format: KEY=VALUE (only UNITY_* keys are read; this file is never executed as shell).
+
+# Minimum Target API Level this project must build with (a floor, not a pin).
+# To adopt a newer level: set it in Player Settings, then raise this number so it cannot regress.
+UNITY_KIT_MIN_TARGET_API=36
+
+# Optional:
+#UNITY_BUILD_OUT=Builds/MyGame.aab
+#UNITY_BUMP_VERSION_CODE=1

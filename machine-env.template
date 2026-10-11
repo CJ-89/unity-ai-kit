@@ -1,0 +1,6 @@
+# Machine-wide defaults for unity-ai-kit (this PC only). Never commit. Safe to leave empty.
+# Per-project settings live in the project's .unity-kit.env; keystores live in
+# ~/.config/unity-kit/projects/<ProjectFolderName>.env (one file per game).
+
+# Override only if Unity is installed somewhere unusual:
+#UNITY_PATH=/Applications/Unity/Hub/Editor/6000.6.3f1/Unity.app/Contents/MacOS/Unity
