@@ -12,7 +12,9 @@ namespace JuicyBuildKit
     /// <summary>
     /// Fails an Android build in seconds (instead of after a 15 minute Gradle run) when:
     ///  - loose androidx.*.aar / androidx.*.jar files sit in Assets/ or Packages/ (duplicate-class errors), or
-    ///  - Target API Level is Automatic or lower than the project's floor.
+    ///  - Target API Level is Automatic or lower than the project's floor (the value Unity reports is the effective one,
+    ///    including any Unity 6 Build Profile override), or
+    ///  - a batch build uses a custom keystore but no keystore password was supplied.
     /// The floor is UNITY_KIT_MIN_TARGET_API (environment variable, else .unity-kit.env in the project root, else 36).
     /// It is a minimum, not a pin: set a higher Target API Level in Player Settings at any time.
     /// </summary>
@@ -59,6 +61,18 @@ namespace JuicyBuildKit
                 throw new BuildFailedException(
                     "Preflight: Target API Level is " + target + " but this project requires at least " + min +
                     " (" + FloorKey + " in .unity-kit.env). Raise it in Player Settings, or lower the floor deliberately.");
+            }
+
+            // Unity does not save keystore passwords in the project. In a batch build nobody can type them, so fail
+            // now with a clear message instead of after the Gradle prerequisites ("Unable to sign the Android application").
+            if (Application.isBatchMode &&
+                PlayerSettings.Android.useCustomKeystore &&
+                string.IsNullOrEmpty(PlayerSettings.Android.keystorePass))
+            {
+                throw new BuildFailedException(
+                    "Preflight: a custom keystore is enabled but no keystore password is set. For batch builds put " +
+                    "UNITY_KEYSTORE_PATH, UNITY_KEYSTORE_PASS, UNITY_KEYALIAS_NAME and UNITY_KEYALIAS_PASS in " +
+                    "~/.config/unity-kit/projects/<ProjectFolder>.env (private, outside git) and run tools/build-aab.sh.");
             }
         }
 

@@ -1,9 +1,9 @@
 {
   "name": "com.juicy.buildkit",
   "displayName": "Juicy Build Kit",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "unity": "2021.3",
-  "description": "Batch-mode Android App Bundle build entry point and preflight guards (stray AndroidX files, Target API Level).",
+  "description": "Batch-mode Android App Bundle build entry point and preflight guards (stray AndroidX files, Target API Level, signing).",
   "author": { "name": "CJ-89" },
   "keywords": ["build", "android", "aab"]
 }

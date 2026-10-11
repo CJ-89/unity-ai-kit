@@ -38,6 +38,16 @@ say()   { printf '%s\n' "$*"; }
 rel()   { printf '%s' "${1#$PROJECT/}"; }
 do_it() { if [ "$DRY" = "1" ]; then say "  [dry-run] $*"; else "$@"; fi; }
 
+# Unity 6 Build Profiles can carry their own copy of Player Settings, and that copy wins. Prints the asset files of
+# Android profiles that override the Target API Level.
+android_profiles() {
+  [ -d "$PROJECT/Assets/Settings/Build Profiles" ] || return 0
+  find "$PROJECT/Assets/Settings/Build Profiles" -maxdepth 1 -type f -name '*.asset' 2>/dev/null | while IFS= read -r f; do
+    if grep -q 'm_BuildTarget: 13' "$f" 2>/dev/null && grep -q 'AndroidTargetSdkVersion: [0-9]' "$f" 2>/dev/null; then printf '%s\n' "$f"; fi
+  done
+}
+profile_target() { grep -m1 -E 'AndroidTargetSdkVersion: [0-9]+' "$1" 2>/dev/null | sed -E 's/.*AndroidTargetSdkVersion: ([0-9]+).*/\1/'; }
+
 SA="$PROJECT/ProjectSettings/ProjectSettings.asset"
 CURRENT_TARGET="$(grep -m1 '^  AndroidTargetSdkVersion:' "$SA" 2>/dev/null | awk '{print $2}' || true)"
 FLOOR_NOW="$(grep -m1 '^UNITY_KIT_MIN_TARGET_API=' "$PROJECT/.unity-kit.env" 2>/dev/null | cut -d= -f2 || true)"
@@ -50,6 +60,10 @@ if [ "$STATUS" = "1" ]; then
   say "Installed version:  $INSTALLED_VERSION"
   say "Target API Level:   ${CURRENT_TARGET:-unknown} (0 = Automatic)"
   say "Project floor:      ${FLOOR_NOW:-not set (kit default 36)}"
+  PROFILES_NOW="$(android_profiles || true)"
+  if [ -n "$PROFILES_NOW" ]; then
+    printf '%s\n' "$PROFILES_NOW" | while IFS= read -r pf; do say "Build Profile:      $(basename "$pf" .asset) overrides Target API Level = $(profile_target "$pf")"; done
+  fi
   chk() { # label src dst
     if [ ! -e "$3" ]; then say "  missing   $1"
     elif diff -rq "$2" "$3" >/dev/null 2>&1; then say "  same      $1"
@@ -175,18 +189,39 @@ fi
 if [ -n "$SET_TARGET" ]; then
   say "- Target API Level -> $SET_TARGET"
   if [ -f "$PROJECT/Temp/UnityLockfile" ]; then
-    say "  SKIPPED   Unity seems open on this project. Close it and rerun with --set-target $SET_TARGET (or change it in Player Settings)."
-  elif ! grep -q '^  AndroidTargetSdkVersion:' "$SA" 2>/dev/null; then
-    say "  SKIPPED   AndroidTargetSdkVersion not found in ProjectSettings.asset (binary serialization?). Set it in Player Settings instead."
-  elif [ "$CURRENT_TARGET" = "$SET_TARGET" ]; then
-    say "  unchanged ProjectSettings.asset (already $SET_TARGET)"
+    say "  SKIPPED   Unity seems open on this project. Unity rewrites these files from memory, so close it and rerun with --set-target $SET_TARGET."
   else
-    if [ "$DRY" = "0" ]; then
-      cp "$SA" "$SA.bak-kit"
-      sed -E "s/^(  AndroidTargetSdkVersion: )[0-9]+/\1$SET_TARGET/" "$SA" > "$SA.tmp.$$" && mv "$SA.tmp.$$" "$SA"
+    # 1) Player Settings (global)
+    if ! grep -q '^  AndroidTargetSdkVersion:' "$SA" 2>/dev/null; then
+      say "  SKIPPED   AndroidTargetSdkVersion not found in ProjectSettings.asset (binary serialization?). Set it in Player Settings instead."
+    elif [ "$CURRENT_TARGET" = "$SET_TARGET" ]; then
+      say "  unchanged ProjectSettings.asset (already $SET_TARGET)"
+    else
+      if [ "$DRY" = "0" ]; then
+        cp "$SA" "$SA.bak-kit"
+        sed -E "s/^(  AndroidTargetSdkVersion: )[0-9]+/\1$SET_TARGET/" "$SA" > "$SA.tmp.$$" && mv "$SA.tmp.$$" "$SA"
+      fi
+      say "  updated   ProjectSettings.asset  (${CURRENT_TARGET:-?} -> $SET_TARGET; backup ProjectSettings.asset.bak-kit)"
     fi
-    say "  updated   ProjectSettings.asset  (${CURRENT_TARGET:-?} -> $SET_TARGET; backup ProjectSettings.asset.bak-kit)"
-    say "            Open Unity and confirm Player Settings > Android > Target API Level shows $SET_TARGET."
+    # 2) Android Build Profiles that override it (they win over Player Settings)
+    PROFILES="$(android_profiles || true)"
+    if [ -n "$PROFILES" ]; then
+      printf '%s\n' "$PROFILES" | while IFS= read -r pf; do
+        pt="$(profile_target "$pf")"
+        if [ "$pt" = "$SET_TARGET" ]; then
+          say "  unchanged $(rel "$pf")  (already $SET_TARGET)"
+        else
+          if [ "$DRY" = "0" ]; then
+            # backup goes under ProjectSettings/ so Unity does not import a stray copy as an asset
+            cp "$pf" "$PROJECT/ProjectSettings/$(basename "$pf" .asset).profile.bak-kit"
+            sed -E "s/(AndroidTargetSdkVersion: )[0-9]+/\1$SET_TARGET/" "$pf" > "$pf.tmp.$$" && mv "$pf.tmp.$$" "$pf"
+          fi
+          say "  updated   $(rel "$pf")  ($pt -> $SET_TARGET; Build Profiles override Player Settings)"
+        fi
+      done
+    fi
+    say "            Open Unity, then CLOSE it again and check the files still say $SET_TARGET:"
+    say "              grep -rn AndroidTargetSdkVersion ProjectSettings Assets --include='*.asset'"
   fi
 fi
 
@@ -197,7 +232,7 @@ if [ ! -f "$PROJECT/.gitignore" ] || ! grep -qxF -- "$MARK" "$PROJECT/.gitignore
   [ "$DRY" = "1" ] || printf '\n%s\n' "$MARK" >> "$PROJECT/.gitignore"
   say "  appended  .gitignore marker"
 fi
-for pat in 'Builds/' 'Logs/' '*.keystore' '*.jks' '.env*' '*.new' '*.bak-kit'; do ensure_line "$PROJECT/.gitignore" "$pat"; done
+for pat in 'Builds/' 'Logs/' '*.keystore' '*.jks' '.env*' '*.new' '*.bak-kit' '*.bak-ai'; do ensure_line "$PROJECT/.gitignore" "$pat"; done
 if [ ! -f "$PROJECT/.gitattributes" ] || ! grep -q '^\*\.sh' "$PROJECT/.gitattributes"; then
   [ "$DRY" = "1" ] || printf '*.sh text eol=lf\n' >> "$PROJECT/.gitattributes"
   say "  appended  .gitattributes (*.sh text eol=lf)"
