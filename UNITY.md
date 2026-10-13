@@ -1,7 +1,7 @@
 # Unity Android build rules (generic, kit-owned)
 
 Scope: Unity projects only. Read this before touching Android/Gradle settings, plugins, or build scripts.
-Project-specific facts live in `docs/ai/UNITY.local.md`. See "Amending" below for who edits what.
+Project-specific facts live in `docs/ai/UNITY.local.md`; Editor (MCP) workflow rules in `docs/ai/UNITY-EDITOR.md`. See "Amending" below for who edits what.
 
 ## Hard rules
 1. Target API Level is set explicitly in Player Settings (Android > Other Settings). Never "Automatic".
@@ -81,6 +81,7 @@ namespace `com.google.unity.ads` used twice.
 - Never delete a rule without asking.
 
 ## Changelog
+- 1.3.0 (2026-10-13): Claude Code <-> Unity Editor: `install.sh` pins the MCP for Unity bridge in `Packages/manifest.json`, installs `docs/ai/UNITY-EDITOR.md` (editor workflow rules + troubleshooting), and `CLAUDE.md` now auto-loads `UNITY.local.md` and `UNITY-EDITOR.md`. `UNITY.local.md` template gains code map / known issues sections.
 - 1.2.0 (2026-10-11): lessons from the Jumoji build: Build Profile overrides are scanned (`--check`) and patched (`--set-target`); early signing check (exit 7, plus Preflight in batch mode); filtered error summary; old plugin import files reported; version code and output path printed.
 - 1.1.0 (2026-10-11): floor-based Target API (raise to 37 without editing the kit), per-project secrets, local-notes split, Gradle/SDK-platform warnings.
 - 1.0.0 (2026-10-11): initial version (lessons from a real Android build: duplicate AndroidX classes, low Target API Level).
