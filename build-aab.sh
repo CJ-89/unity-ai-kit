@@ -85,6 +85,27 @@ android_profile_files() {
 # ---- Bundle verification ---------------------------------------------------------
 # Reads the bundle's protobuf manifest without extra tools: printable runs become lines, and an attribute's value is the
 # run right after its name. Good enough for the fields below, and needs only unzip (plus keytool for the signer).
+# A keytool that really runs. On macOS /usr/bin/keytool is only a stub ("Unable to locate a Java Runtime") unless a JDK is
+# installed, so prefer JAVA_HOME, then the JDK that ships with Unity's Android module, then PATH.
+find_keytool() {
+  local ver c cands=""
+  [ -n "${JAVA_HOME:-}" ] && cands="$JAVA_HOME/bin/keytool"
+  ver=$(grep -m1 'm_EditorVersion:' ProjectSettings/ProjectVersion.txt 2>/dev/null | awk '{print $2}' || true)
+  if [ -n "${UNITY_PATH:-}" ]; then
+    cands="$cands|$(dirname "$UNITY_PATH")/../../../PlaybackEngines/AndroidPlayer/OpenJDK/bin/keytool|$(dirname "$UNITY_PATH")/Data/PlaybackEngines/AndroidPlayer/OpenJDK/bin/keytool"
+  fi
+  if [ -n "$ver" ]; then
+    cands="$cands|/Applications/Unity/Hub/Editor/$ver/PlaybackEngines/AndroidPlayer/OpenJDK/bin/keytool|$HOME/Unity/Hub/Editor/$ver/Editor/Data/PlaybackEngines/AndroidPlayer/OpenJDK/bin/keytool|/c/Program Files/Unity/Hub/Editor/$ver/Editor/Data/PlaybackEngines/AndroidPlayer/OpenJDK/bin/keytool.exe"
+  fi
+  cands="$cands|$(command -v keytool 2>/dev/null || true)"
+  local IFS='|'
+  for c in $cands; do
+    [ -n "$c" ] && [ -x "$c" ] || continue
+    "$c" -help >/dev/null 2>&1 && { printf '%s' "$c"; return 0; }
+  done
+  return 0
+}
+
 verify_aab() {
   local aab="$1" bad=0 tmp man attr
   [ -f "$aab" ] || fail "No bundle to verify: ${aab:-Builds/*.aab}" 2
@@ -103,7 +124,7 @@ verify_aab() {
   minsdk=$(attr minSdkVersion '^[0-9]+')
   target=$(attr targetSdkVersion '^[0-9]+')
   dbg=$(attr debuggable '(true|false)')
-  echo "---- verify: $aab ($(du -h "$aab" | cut -f1))"
+  echo "---- verify: $aab ($(du -h "$aab" | cut -f1 | tr -d ' '))"
   echo "Package:      ${pkg:-?}"
   echo "Version:      ${vname:-?} (code ${vcode:-?})"
   echo "SDK:          min ${minsdk:-?}, target ${target:-?} (project floor ${UNITY_KIT_MIN_TARGET_API:-36})"
@@ -128,18 +149,22 @@ verify_aab() {
   case " $abis " in *" armeabi-v7a "*) case " $abis " in *" arm64-v8a "*) ;; *) echo "FAIL: 32-bit native code without arm64-v8a; Google Play requires 64-bit."; bad=1 ;; esac ;; esac
   local icons; icons=$(unzip -l "$aab" 2>/dev/null | grep -cE 'base/res/mipmap[^/]*/(app_icon|ic_launcher)' || true)
   if [ "${icons:-0}" -eq 0 ]; then echo "WARNING: no launcher icon resources found."; else echo "Icon files:   $icons (check the icon on a device: empty Android icon slots ship Unity's default icon)"; fi
-  if command -v keytool >/dev/null 2>&1; then
-    local cert; cert=$(keytool -printcert -jarfile "$aab" 2>&1 || true)
+  local kt cert
+  kt=$(find_keytool)
+  if [ -z "$kt" ]; then
+    echo "Signer:       unknown (no working keytool: install a JDK or set JAVA_HOME; Unity's own JDK is used when found)"
+  else
+    cert=$("$kt" -printcert -jarfile "$aab" 2>&1 || true)
     if printf '%s' "$cert" | grep -q 'SHA1:'; then
       echo "Signer:       $(printf '%s\n' "$cert" | grep -m1 'Owner:' | sed -E 's/^[[:space:]]*Owner:[[:space:]]*//')"
       echo "Signer SHA-1: $(printf '%s\n' "$cert" | grep -m1 'SHA1:' | sed -E 's/^[[:space:]]*SHA1:[[:space:]]*//')"
       echo "              (must equal Play Console > App integrity > Upload key certificate)"
       if printf '%s' "$cert" | grep -qi 'Android Debug'; then echo "FAIL: signed with the Android debug key; Google Play rejects it."; bad=1; fi
-    else
+    elif printf '%s' "$cert" | grep -qi 'not a signed jar'; then
       echo "FAIL: the bundle is not signed."; bad=1
+    else
+      echo "Signer:       unknown ($kt could not read the certificate: $(printf '%s' "$cert" | head -1))"
     fi
-  else
-    echo "Signer:       (keytool not found; install a JDK to see the signer SHA-1)"
   fi
   rm -rf "$tmp"
   if [ "$bad" = "1" ]; then echo "Verify: FAILED"; return 8; fi
