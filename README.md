@@ -11,7 +11,8 @@ Then, for a project that should ship to Google Play:
 1. Fill in the signing lines in `~/.config/unity-kit/projects/<Folder>.env` (keystore path and passwords; Unity never saves the passwords).
 2. Open the project once in Unity and confirm Target API Level; close Unity. Verify on disk (Unity 6 Build Profiles can override it):
    `grep -rn AndroidTargetSdkVersion ProjectSettings Assets --include='*.asset'`
-3. `./tools/build-aab.sh --check`, then `./tools/build-aab.sh` (Unity must be closed). The bundle lands in `Builds/`.
+3. `./tools/build-aab.sh --check`, then `./tools/build-aab.sh` (Unity must be closed). The bundle lands in `Builds/` and is checked
+   by `--verify` (version, debuggable, signer SHA-1, ...). `./tools/build-aab.sh --verify some.aab` inspects any bundle.
 4. Raise the Bundle Version Code for every Play upload (`UNITY_BUMP_VERSION_CODE=1` in `.unity-kit.env` does it automatically).
 
 ## Claude Code + Unity Editor (MCP for Unity)
@@ -70,3 +71,8 @@ Windows: use Git Bash (Git for Windows). Not yet tested there.
 - Unity rewrites settings files from memory: do not edit them while the Editor is open.
 - Keystore passwords are not saved by Unity: batch builds need `UNITY_KEYSTORE_*` (`--check` stops with exit 7 otherwise).
 - Old plugin `.meta` files (`PluginImporter ... version 1`) print many error lines but did not stop a build; `--check` lists them.
+- The Build Profile's Player Settings copy also holds defines, version, icons and the Development Build flag; `--check` compares them.
+- Empty Android icon slots ship Unity's default icon (a live game did); `--check` warns.
+- An ads plugin imported over an older copy left old C# that broke ads at runtime; reinstall SDK plugins cleanly (`docs/ai/UNITY.md` rule 11).
+- Unity Analytics / Cloud Diagnostics / unused Unity packages triggered a Play "Invalid data safety declaration"; `--check` lists data-sending SDKs.
+- Release steps, device-testing pitfalls (two signing keys, `adb uninstall`, development vs release builds): `docs/ai/UNITY.md`.

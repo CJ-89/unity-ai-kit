@@ -20,6 +20,17 @@ Project-specific facts live in `docs/ai/UNITY.local.md`. `install.sh --update` r
 - Read-only questions ("what does X do", audits) must not change any file.
 - Batch builds (`tools/build-aab.sh`) need the Editor closed, which also stops the bridge. Finish Editor work first.
 - Only one Unity project should be open while working with Claude: all open editors share one bridge server.
+- Settings live in the Editor's memory: to undo a settings change, change it back through the Editor (MCP or menus). `git restore` on
+  `ProjectSettings/` or a Build Profile while Unity is open is undone by Unity's next save.
+- With an active Build Profile, the PlayerSettings API writes to that profile's copy. Set the value in Player Settings too and show
+  both diffs (UNITY.md rule 8). Never commit a ticked Development Build.
+- Persistent objects (`DontDestroyOnLoad`): a scene reload creates a second copy. Guard with
+  `if (Instance != null && Instance != this) { Destroy(gameObject); return; }` and clear `Instance` in `OnDestroy`, or create the object
+  from `[RuntimeInitializeOnLoadMethod]` instead of placing it in a scene.
+- The Device Simulator cannot be driven through MCP (Play Mode renders to the Game view). For safe-area/notch checks use the simulator's
+  device data (resolution, dpi, safe area) or ask the user to check, and say which you did.
+- Third-party Editor placeholders (ads, consent, sign-in) do not behave like the device (e.g. a placeholder banner vanishes on scene
+  reload). Report Editor results as "Editor only" and list what must be checked on a phone.
 
 ## Troubleshooting
 | Symptom | Cause | Fix |
@@ -30,3 +41,5 @@ Project-specific facts live in `docs/ai/UNITY.local.md`. `install.sh --update` r
 | UnityMCP missing in a new project | Registered only for one folder (local scope) | One-time: `claude mcp add --transport http --scope user UnityMCP http://127.0.0.1:8080/mcp` |
 | UnityMCP disappeared everywhere | "Unregister" in the MCP window removes it from all scopes, including user scope | Run the one-time command above again. Do not press Unregister |
 | Claude acts on the wrong project | Two editors open on one bridge | Close the other editor, or name the project in the prompt |
+| A settings value Claude reverted comes back | Unity rewrote the file from memory | Revert through the Editor, or close Unity before `git restore` |
+| Code waits forever for a callback from a native SDK (e.g. consent) | The SDK posts callbacks through a main-thread dispatcher that is only created by a later init call | Create the dispatcher first (for Google Mobile Ads: `MobileAdsEventExecutor.Initialize()` before UMP), then test on a device |

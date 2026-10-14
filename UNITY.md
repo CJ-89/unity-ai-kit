@@ -16,21 +16,34 @@ Project-specific facts live in `docs/ai/UNITY.local.md`; Editor (MCP) workflow r
 6. Unity cannot open the same project twice. Close the Editor before a batch build.
 7. Work on a git branch. Commit before large changes. Show diffs of `ProjectSettings/` and `Assets/Plugins/Android/`.
 8. Unity 6 Build Profiles (`Assets/Settings/Build Profiles/*.asset`) can hold their own copy of Player Settings, and that copy wins
-   at build time. The Target API Level (and Bundle Version Code) must be correct in BOTH places. Verify on disk, not on screen:
-   `grep -rn AndroidTargetSdkVersion ProjectSettings Assets --include='*.asset'`.
+   at build time. It covers far more than the Target API Level: version and version code, scripting defines, app icons, keystore,
+   Development Build, Unity cloud services. Every Player Settings change must be correct in BOTH places; `--check` compares the
+   release-relevant ones. Verify on disk, not on screen, e.g. `grep -rn AndroidTargetSdkVersion ProjectSettings Assets --include='*.asset'`.
 9. Unity rewrites `ProjectSettings/*.asset` from memory while it is open. Never edit them (by hand or by script) while the Editor is
    running; close it first. After changing settings: open Unity once, close it, and re-check the files still hold the new value.
 10. Batch builds cannot type passwords: Unity does not save keystore passwords. Signing comes from `UNITY_KEYSTORE_*` in the
    per-project private env file. Never ask the user to paste passwords into chat.
+11. SDK plugins (ads, Play Games, consent, ...) are updated by a CLEAN reinstall: delete the old plugin folders (keep a commit to roll
+   back), import the new release, Force Resolve. Never import a new version over an old one: files the new version no longer ships
+   stay behind and still compile (seen: 2018 ad C# source next to 2025 DLLs, so ads never ran). Use the `.unitypackage` when EDM4U
+   lives in `Assets/ExternalDependencyManager` (the UPM/OpenUPM package would add a second EDM4U).
+12. Keep the Android app icon set (Player Settings > Android > Icon; in Unity 6 only the Adaptive slots exist: foreground + background,
+   432 px, artwork inside the centre 66%). Empty Android slots ship Unity's default icon, even if a Default Icon is set.
 
 ## Build
 ```
-./tools/build-aab.sh            # full build -> Builds/<productName>.aab, log in Logs/build.log
+./tools/build-aab.sh            # full build -> Builds/<productName>.aab, log in Logs/build.log, then --verify
 ./tools/build-aab.sh --check    # seconds-long sanity check, no build
+./tools/build-aab.sh --verify [file.aab]   # inspect a bundle (default: newest Builds/*.aab), no Unity needed
 ```
+- `--verify` prints package, version name/code, min/target SDK, debuggable, AdMob App ID(s), content providers, ABIs, icon files
+  and the signer SHA-1. It fails (exit 8) on a debuggable or unsigned bundle, a target SDK below the floor, or 32-bit-only native code.
+  The signer SHA-1 must equal Play Console > App integrity > Upload key certificate.
 - Fix the FIRST error only, then rebuild. Never rerun an unchanged build.
 - The script prints a short error summary. Read `Logs/build.log` only around the first `FAILURE`/`error`.
-- Exit codes: 3 Unity open, 4 stray AndroidX, 5 Target API, 6 keystore file missing, 7 signing not configured.
+- Exit codes: 3 Unity open, 4 stray AndroidX, 5 Target API, 6 keystore file missing, 7 signing not configured, 8 bundle failed `--verify`.
+- `--check` also warns about: Build Profile vs Player Settings differences, empty Android icon slots, Development Build ticked in
+  a profile, SDKs/Unity services that send data off the device (Data safety), and Google Mobile Ads installed over an older copy.
 - Reading `Logs/build.log`: it is mostly stack frames. Drop the lines containing `PluginImporter object at version` /
   `below the supported minimum` (harmless noise), then look for `UnityException`, `Unable to sign`, `error CS`, `FAILURE:`, and the
   final `Build Finished, Result:` line. The script prints this filtered summary for you.
@@ -63,15 +76,44 @@ Project-specific facts live in `docs/ai/UNITY.local.md`; Editor (MCP) workflow r
 | `UnityException: Unable to sign the Android application` / `No keystore passwords were found` | Custom keystore enabled but Unity saved no passwords; batch mode cannot ask | Fill `UNITY_KEYSTORE_PATH/_PASS`, `UNITY_KEYALIAS_NAME/_PASS` in `~/.config/unity-kit/projects/<Project>.env` (`--check` and Preflight now stop early with exit 7) |
 | Many `Serialized file ... .meta contains a PluginImporter object at version 1, below the supported minimum (2)` | Old plugins (e.g. Google Mobile Ads, EasyMobile) ship import settings in a pre-Unity-2019 format | Usually noise: they were logged as errors but did not stop a real build. Clean up with Assets > Reimport All (Editor open) or update the plugin. Do not hand-edit metas without a backup |
 | Stray files return after a branch switch or plugin update | Generated files were committed or restored | Delete them; commit the deletion; Force Resolve after every plugin update |
+| Launcher shows Unity's grey logo instead of the game icon | Android icon slots empty (only the Default Icon set) | Assign Player Settings > Android > Icon > Adaptive (foreground + background) in Player Settings and the Build Profile; `--check` warns |
+| Ads never load; logcat `NoSuchMethodError` / `MobileAds.initialize(activity, appId)` | Plugin C# from an old version compiled against a new Android SDK (in-place import) | Clean reinstall (rule 11); `--check` warns about mixed plugin folders |
+| Play Console: "Invalid data safety declaration" | An SDK sends data the Data safety form does not declare (ads SDK, Unity Analytics/Cloud Diagnostics, an unused Unity Ads package) | Declare every SDK's data, or remove what is unused (`--check` lists them). The form must cover every version still installed by players |
+| Play Games sign-in fails on a Build And Run / sideloaded build but works from Play (or the reverse) | Play Games credential exists only for one signing key | Add an Android credential for BOTH SHA-1s (upload key and app signing key, Play Console > App integrity), in the Google Cloud project linked to Play Games; publish the Play Games changes |
+| Google Cloud: "Android package name and fingerprint are already in use" | That package + SHA-1 pair already has an OAuth client (pairs are unique across ALL projects) | Find it (it may be the existing credential, or in another project); delete the one in the wrong project, wait, recreate in the Play Games project |
+| Play Store: "another user has already installed an incompatible version" | A Build And Run copy (upload-key signed) still exists in another user / work profile / Secure Folder | `adb uninstall <package>` (removes it for all users); check with `adb shell pm list packages --user all` |
+| Consent (UMP) form never shows while testing | Release build (no debug geography), device hash missing/old build, or consent cached | Test with a Development Build, the device hash in the debug settings, and cleared app storage. Outside the EEA/UK a release build correctly shows nothing |
 
 Harmless warnings (ignore unless something else breaks): `package=` attribute ignored in plugin manifests,
 `minSdkVersion > targetSdkVersion` in GooglePlayGamesManifest, `android.enableJetifier` deprecated (turn off only after a green build),
 namespace `com.google.unity.ads` used twice.
 
 ## After any plugin / SDK update
+0. It was a clean reinstall (rule 11): no files from the old version remain (`git status` shows the old ones deleted).
 1. EDM4U: Assets > External Dependency Manager > Android Resolver > Delete Resolved Libraries, then Force Resolve.
 2. `rm -rf Library/Bee/Android`
-3. `./tools/build-aab.sh --check`, then a full build.
+3. `./tools/build-aab.sh --check`, then a full build (it runs `--verify`).
+
+## Device testing
+- Build And Run (Editor) is signed with the upload key and is usually a Development Build; a Play install (internal testing or later)
+  is signed with Play's app signing key and is a release build. Anything keyed to the signature (Play Games, Google sign-in, API key
+  restrictions) needs both SHA-1s registered.
+- `Debug.isDebugBuild` is true in the Editor and in Development Builds, false in release builds. Code that switches on it (test ad units,
+  consent debug geography) behaves differently on Play. Untick Development Build after device tests and check the Build Profile diff.
+- Before installing from Play over a Build And Run copy: `adb uninstall <package>` (all users), or Play refuses the install.
+- Never tap live ads. Register test phones in the ad network (AdMob > Settings > Test devices) so release builds show labelled test ads.
+- Useful: `adb logcat -c`, reproduce, then `adb logcat -d | grep -iE "<your log prefix>|UserMessagingPlatform|GamesServices|AndroidRuntime"`.
+
+## Release checklist (Google Play)
+1. `--check` clean (or warnings understood); version name and code raised in Player Settings AND the Build Profile.
+2. Development build on a phone: the release's features, back button, restart, ads/consent if any.
+3. Release build: `./tools/build-aab.sh` (runs `--verify`); signer SHA-1 = upload key.
+4. Internal testing track; install from Play on a test phone (uninstall the Build And Run copy first); repeat the key checks; read the
+   pre-launch report.
+5. Play Console: Data safety matches the SDKs in the build; no open policy issues; Play Games / other credential changes published.
+6. Production with a staged rollout (e.g. 20% -> 50% -> 100%); watch Android vitals (crash rate < 1%, ANR < 0.47%) and the ad network
+   between steps. A bad release is halted, not rolled back: fix forward with a higher version code.
+7. Merge the release branch, tag `vX.Y.Z`, note the release in `docs/ai/UNITY.local.md`.
 
 ## Amending
 - This file (`docs/ai/UNITY.md`) is generic and owned by the kit. `install.sh --update` replaces it (the old copy is saved as `UNITY.md.bak-kit`).
@@ -81,6 +123,11 @@ namespace `com.google.unity.ads` used twice.
 - Never delete a rule without asking.
 
 ## Changelog
+- 1.4.0 (2026-10-14): lessons from Jumoji 1.0.4/1.0.5: `--verify` (bundle inspection, also after every build, exit 8); `--check` warns
+  about Build Profile vs Player Settings drift, empty Android icons, Development Build in a profile, data-sending SDKs/services and
+  mixed ad-plugin installs; rules 11 (clean SDK reinstall) and 12 (app icon); sections "Device testing" and "Release checklist";
+  new error-table rows (icon, ads, Data safety, Play Games credentials, OAuth "already in use", incompatible install, consent testing);
+  `install.sh` ignores `UserSettings/`.
 - 1.3.0 (2026-10-13): Claude Code <-> Unity Editor: `install.sh` pins the MCP for Unity bridge in `Packages/manifest.json`, installs `docs/ai/UNITY-EDITOR.md` (editor workflow rules + troubleshooting), and `CLAUDE.md` now auto-loads `UNITY.local.md` and `UNITY-EDITOR.md`. `UNITY.local.md` template gains code map / known issues sections.
 - 1.2.0 (2026-10-11): lessons from the Jumoji build: Build Profile overrides are scanned (`--check`) and patched (`--set-target`); early signing check (exit 7, plus Preflight in batch mode); filtered error summary; old plugin import files reported; version code and output path printed.
 - 1.1.0 (2026-10-11): floor-based Target API (raise to 37 without editing the kit), per-project secrets, local-notes split, Gradle/SDK-platform warnings.

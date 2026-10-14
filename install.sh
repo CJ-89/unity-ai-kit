@@ -306,7 +306,11 @@ if [ ! -f "$PROJECT/.gitignore" ] || ! grep -qxF -- "$MARK" "$PROJECT/.gitignore
   [ "$DRY" = "1" ] || printf '\n%s\n' "$MARK" >> "$PROJECT/.gitignore"
   say "  appended  .gitignore marker"
 fi
-for pat in 'Builds/' 'Logs/' '*.keystore' '*.jks' '.env*' '*.new' '*.bak-kit' '*.bak-ai' '.DS_Store' '.claude/settings.local.json'; do ensure_line "$PROJECT/.gitignore" "$pat"; done
+for pat in 'Builds/' 'Logs/' 'UserSettings/' '*.keystore' '*.jks' '.env*' '*.new' '*.bak-kit' '*.bak-ai' '.DS_Store' '.claude/settings.local.json'; do ensure_line "$PROJECT/.gitignore" "$pat"; done
+# UserSettings/ holds per-user Editor layout and changes on every session. Ignoring it does not untrack files already in git.
+if git -C "$PROJECT" rev-parse --is-inside-work-tree >/dev/null 2>&1 && [ -n "$(git -C "$PROJECT" ls-files UserSettings 2>/dev/null | head -1)" ]; then
+  say "  NOTE      UserSettings/ is tracked in git (per-user Editor layout). Untrack it once: git -C \"$PROJECT\" rm -r --cached UserSettings"
+fi
 if [ ! -f "$PROJECT/.gitattributes" ] || ! grep -q '^\*\.sh' "$PROJECT/.gitattributes"; then
   [ "$DRY" = "1" ] || printf '*.sh text eol=lf\n' >> "$PROJECT/.gitattributes"
   say "  appended  .gitattributes (*.sh text eol=lf)"
