@@ -123,6 +123,8 @@ namespace `com.google.unity.ads` used twice.
 - Never delete a rule without asking.
 
 ## Changelog
+- 1.4.2 (2026-10-14): the embedded `Packages/com.juicy.buildkit` now ships its `.meta` files (fixed GUIDs). Before, `install.sh --update`
+  replaced the package folder and deleted the metas Unity had generated, so every update showed them as deleted in git.
 - 1.4.1 (2026-10-14): `--verify` finds a working keytool (JAVA_HOME, then Unity's bundled OpenJDK, then PATH). On macOS without a JDK,
   `/usr/bin/keytool` is only a stub, which made 1.4.0 report a signed bundle as "not signed". No keytool now means "Signer: unknown", not a failure.
 - 1.4.0 (2026-10-14): lessons from Jumoji 1.0.4/1.0.5: `--verify` (bundle inspection, also after every build, exit 8); `--check` warns
