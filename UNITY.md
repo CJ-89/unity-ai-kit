@@ -123,6 +123,8 @@ namespace `com.google.unity.ads` used twice.
 - Never delete a rule without asking.
 
 ## Changelog
+- 1.4.1 (2026-10-14): `--verify` finds a working keytool (JAVA_HOME, then Unity's bundled OpenJDK, then PATH). On macOS without a JDK,
+  `/usr/bin/keytool` is only a stub, which made 1.4.0 report a signed bundle as "not signed". No keytool now means "Signer: unknown", not a failure.
 - 1.4.0 (2026-10-14): lessons from Jumoji 1.0.4/1.0.5: `--verify` (bundle inspection, also after every build, exit 8); `--check` warns
   about Build Profile vs Player Settings drift, empty Android icons, Development Build in a profile, data-sending SDKs/services and
   mixed ad-plugin installs; rules 11 (clean SDK reinstall) and 12 (app icon); sections "Device testing" and "Release checklist";
