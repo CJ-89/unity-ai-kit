@@ -2,6 +2,20 @@
 
 Reusable Unity Android (AAB) build workflow for AI coding agents (Claude Code, Codex, Cursor, ...).
 
+## What it does
+- **Rules for the agent** (`docs/ai/UNITY.md`, `docs/ai/UNITY-EDITOR.md`): Android/Gradle/signing rules, an error -> cause -> fix
+  table, device-testing pitfalls and a Google Play release checklist, all learned from shipping a real Unity game.
+- **`tools/build-aab.sh`**: one command for a signed Android App Bundle from the command line. `--check` catches the usual
+  mistakes in seconds (Target API, Build Profile overrides, signing, stray AndroidX files, empty app icons, data-sending SDKs, ...);
+  `--verify` inspects the finished `.aab` (version, debuggable, ABIs, signer SHA-1).
+- **`Packages/com.juicy.buildkit`**: a small Unity Editor package with the batch build entry point and preflight guards.
+- **Claude Code <-> Unity Editor**: pins the [MCP for Unity](https://github.com/CoplayDev/unity-mcp) bridge so Claude Code can
+  read the console, recompile and enter Play Mode in the open Editor.
+- **`install.sh`**: installs or updates all of the above in any Unity project, without overwriting your own edits.
+
+Requirements: Unity 6 (tested with 6000.x), Android build support, bash. Tested on macOS; Linux should work; Windows (Git Bash) is untested.
+MCP for Unity is a third-party package with its own license; the kit only adds a pinned reference to it.
+
 ## Use in a new Unity project
 ```
 ~/Documents/GitHub/unity-ai-kit/install.sh /path/to/NewGame            # safe: never overwrites your edits
@@ -76,3 +90,7 @@ Windows: use Git Bash (Git for Windows). Not yet tested there.
 - An ads plugin imported over an older copy left old C# that broke ads at runtime; reinstall SDK plugins cleanly (`docs/ai/UNITY.md` rule 11).
 - Unity Analytics / Cloud Diagnostics / unused Unity packages triggered a Play "Invalid data safety declaration"; `--check` lists data-sending SDKs.
 - Release steps, device-testing pitfalls (two signing keys, `adb uninstall`, development vs release builds): `docs/ai/UNITY.md`.
+
+## License
+MIT, see [LICENSE](LICENSE). Provided as is, without warranty: review what it changes in your project (it shows diffs and never
+commits for you), and keep your keystore and passwords out of git.
